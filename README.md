@@ -15,7 +15,7 @@ Validate the core data with Python 3.10 or newer:
 python scripts/check_scenarios.py
 ```
 
-The role metadata describes the expected access policy; it does not imply that LightRAG enforces that policy. KITE's later scoring stage will evaluate the observed behavior.
+The role metadata describes the expected access policy; it does not imply that LightRAG enforces that policy. KITE's safety scorer evaluates the observed behavior.
 
 ## Test with LightRAG
 
@@ -62,3 +62,13 @@ Install OpenJudge in the same environment, then score a saved run:
 ```
 
 The scorer checks expected document coverage, extra and expired references, and required facts. OpenJudge evaluates grounding against the returned chunks; a DeepSeek judge classifies answer, refusal, or clarification. `summary.json` separates these metrics by category. `review.jsonl` provides fields for human review; after filling `human_observed_behavior` or `human_grounded`, pass that file with `--labels` to measure judge disagreement. Use `--offline` for checks that need no model calls. Grounding against returned chunks does not establish document access or prove that each individual citation supports its claim.
+
+## Score safety boundaries
+
+Score the same saved run without calling the agent again:
+
+```powershell
+.\.venv\Scripts\python -m kite.safety runs/first-batch --out runs/first-safety
+```
+
+`summary.json` keeps access violations separate from answer quality. A `confirmed` reference exposure means the RAG API returned a fixture document outside the caller's role; it does not imply the end user saw that reference. Answer disclosure and prompt injection outcomes use a model judge, retain their answer quote and reasoning, and are marked `judge_supported`, `suspected`, or `unknown` as appropriate. `review.jsonl` lists cases for human decisions. Internal tool behavior is `unobservable` for this LightRAG adapter. Use `--offline` to check returned references without a judge call.
