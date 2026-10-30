@@ -29,7 +29,12 @@ def agent_config(path):
     config = json.loads(path.read_text(encoding="utf-8"))
     if config.get("type") != "lightrag" or not isinstance(config.get("profiles"), dict):
         raise ValueError("agent config must define LightRAG profile URLs")
-    for profile, url in config["profiles"].items():
+    urls = list(config["profiles"].items())
+    for profile, roles in config.get("role_profiles", {}).items():
+        if profile not in config["profiles"] or not isinstance(roles, dict):
+            raise ValueError("role_profiles must map configured profiles to roles")
+        urls.extend((f"{profile}:{role}", url) for role, url in roles.items())
+    for profile, url in urls:
         if not isinstance(profile, str) or not isinstance(url, str):
             raise ValueError("LightRAG profile names and URLs must be strings")
         parts = urlsplit(url)
@@ -77,6 +82,10 @@ def run(suite, agent, out, selected_profiles=None, selected_ids=None):
         "selected_ids": sorted(selected_ids) if selected_ids else None,
         "counts": {"ok": 0, "error": 0},
     }
+    manifest["role_servers"] = {f"{profile}:{role}": server_info(url)
+                                for profile, roles in config.get("role_profiles", {}).items()
+                                for role, url in roles.items()
+                                if selected_profiles is None or profile in selected_profiles}
     write_json(out / "manifest.json", manifest)
     for line_number, line in enumerate(suite_bytes.decode("utf-8").splitlines(), 1):
         if not line.strip():
@@ -90,7 +99,7 @@ def run(suite, agent, out, selected_profiles=None, selected_ids=None):
             profile = scenario["knowledge_profile"]
             if selected_profiles and profile not in selected_profiles:
                 continue
-            url = config["profiles"][profile]
+            url = config.get("role_profiles", {}).get(profile, {}).get(scenario["role"], config["profiles"][profile])
             trace = lightrag.query_trace(scenario["query"], scenario["role"], profile, url)
             result = {"status": "ok", "scenario": scenario, "trace": trace}
         except Exception as error:

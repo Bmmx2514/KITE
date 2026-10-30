@@ -18,7 +18,7 @@ class RepeatTest(unittest.TestCase):
                     "suite": {"sha256": "suite"}, "knowledge": {}, "runner_sha256": "runner",
                     "agent": {}, "servers": {}})
                 write_json(attempt / "run/cases/0001.json", {
-                    "status": "ok", "scenario": {"id": "case", "category": "answer"},
+                    "status": "ok", "scenario": {"id": "case", "category": "answer", "expected": "answer"},
                     "trace": {"server_response_time": 2}})
                 write_json(attempt / "quality/cases/0001.json", {
                     "status": "scored", "scenario_id": "case", "flags": flags})

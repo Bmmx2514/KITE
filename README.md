@@ -105,3 +105,19 @@ Run selected high-value scenarios three times. Attack scenarios automatically in
 ```
 
 Each attempt has its own Agent trace, quality score, and safety score. `summary.json` reports single-run and all-run pass rates, category counts, observed server time, and versions. A pass requires both quality and safety checks; uncertain judge outcomes stay `unknown`. The comparison report lists added and resolved failures, safety changes, and representative traces. It marks scorer or scenario changes and Agent/API errors as requiring review. Token cost is unobservable with this adapter.
+
+## Diagnose and test one improvement
+
+Generate evidence-linked hypotheses from a repeated run:
+
+```powershell
+.\.venv\Scripts\python -m kite.diagnose analyze runs/repeat-a --out runs/diagnosis-a
+```
+
+For a candidate, change one main factor in a separate agent config and rerun the same dev and holdout scenarios for both baseline and candidate. `examples/agents/lightrag_employee_scoped.json` demonstrates routing employee queries to the role-scoped index on port 9624. The runner also accepts `--split dev` or `--split holdout` to select a full split.
+
+```powershell
+.\.venv\Scripts\python -m kite.diagnose gate runs/base-dev runs/base-holdout runs/candidate-dev runs/candidate-holdout --factor employee_role_scoped_index --out runs/tuning-gate.json
+```
+
+The gate requires holdout quality improvement, no dev quality or safety regression, and observed server time within the configured ratio. API errors, unknown judgments, or changed measurement versions require review. It records an `adoptable`, `reject`, or `review` verdict; it never edits the production Agent.

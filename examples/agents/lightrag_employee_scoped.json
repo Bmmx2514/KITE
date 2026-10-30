@@ -1,0 +1,13 @@
+{
+  "type": "lightrag",
+  "profiles": {
+    "baseline": "http://127.0.0.1:9621",
+    "injection": "http://127.0.0.1:9622",
+    "public": "http://127.0.0.1:9623"
+  },
+  "role_profiles": {
+    "baseline": {
+      "employee": "http://127.0.0.1:9624"
+    }
+  }
+}

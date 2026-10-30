@@ -3,6 +3,7 @@
 import argparse
 from collections import Counter, defaultdict
 import json
+from os.path import relpath
 from pathlib import Path
 
 from kite.__main__ import ROOT, run as run_suite, write_json
@@ -20,7 +21,8 @@ def one_result(run_case, quality_case, safety_case):
         api_error = error.get("type") in {"URLError", "HTTPError", "TimeoutError", "ConnectionError"} or "LightRAG" in error.get("message", "")
         return {"status": "api_error" if api_error else "run_error", "error": error,
                 "quality_flags": [], "safety_flags": [], "trace": None,
-                "category": ((run_case or {}).get("scenario") or {}).get("category")}
+                "category": ((run_case or {}).get("scenario") or {}).get("category"),
+                "expected_behavior": ((run_case or {}).get("scenario") or {}).get("expected")}
     trace = run_case["trace"]
     flags = list((quality_case or {}).get("flags", []))
     security = safety_case or {}
@@ -52,7 +54,8 @@ def one_result(run_case, quality_case, safety_case):
     return {"status": "fail" if failed else "unknown" if unknown else "pass",
             "quality_flags": flags, "safety_flags": security_flags,
             "trace": run_case.get("_path"), "seconds": trace.get("server_response_time"),
-            "category": run_case["scenario"]["category"]}
+            "category": run_case["scenario"]["category"],
+            "expected_behavior": run_case["scenario"]["expected"]}
 
 
 def summarize(bundle):
@@ -72,6 +75,7 @@ def summarize(bundle):
                              "selected_ids": manifest.get("selected_ids"),
                              "knowledge": manifest["knowledge"], "runner_sha256": manifest["runner_sha256"],
                              "agent": manifest["agent"], "servers": manifest["servers"],
+                             "role_servers": manifest.get("role_servers", {}),
                              "quality_grader": quality_summary.get("grader_version"),
                              "quality_scorer_sha256": quality_summary.get("scorer_sha256"),
                              "safety_grader": safety_summary.get("grader_version"),
@@ -108,18 +112,21 @@ def summarize(bundle):
             "versions": version_rows[0]}
 
 
-def run_repeated(suite, agent, out, times=3, scenarios=None):
+def run_repeated(suite, agent, out, times=3, scenarios=None, splits=None):
     if times < 2:
         raise ValueError("repeat count must be at least two")
-    if scenarios:
-        scenarios = set(scenarios)
+    if scenarios or splits:
         rows = [json.loads(line) for line in suite.read_text(encoding="utf-8").splitlines() if line.strip()]
-        unknown = scenarios - {row["id"] for row in rows}
+        unknown = set(scenarios or []) - {row["id"] for row in rows}
         if unknown:
             raise ValueError(f"unknown scenario IDs: {sorted(unknown)}")
+        selected = {row["id"] for row in rows if not splits or row["split"] in splits}
+        scenarios = selected & set(scenarios) if scenarios else selected
         for row in rows:
             if row["id"] in scenarios and row.get("attack") and row.get("paired_with"):
                 scenarios.add(row["paired_with"])
+        if not scenarios:
+            raise ValueError("no scenarios match the selection")
     out.mkdir(parents=True, exist_ok=False)
     for number in range(1, times + 1):
         attempt = out / f"attempt-{number}"
@@ -181,7 +188,9 @@ def compare(old_path, new_path, out):
     for scenario_id, rows in new["cases"].items():
         failure = next((item for item in rows if item["status"] != "pass"), None)
         if failure:
-            lines.append(f"- {scenario_id}: {failure['status']}; trace: `{failure['trace']}`; quality: {', '.join(failure['quality_flags']) or 'none'}; safety: {', '.join(failure['safety_flags']) or 'none'}")
+            trace_href = relpath(failure["trace"], out.parent).replace("\\", "/") if failure["trace"] else None
+            trace_link = f"[trace]({trace_href})" if trace_href else "trace unavailable"
+            lines.append(f"- {scenario_id}: {failure['status']}; {trace_link}; quality: {', '.join(failure['quality_flags']) or 'none'}; safety: {', '.join(failure['safety_flags']) or 'none'}")
             shown += 1
             if shown == 5:
                 break
@@ -198,13 +207,16 @@ def main():
     runner.add_argument("--out", type=Path, required=True)
     runner.add_argument("--times", type=int, default=3)
     runner.add_argument("--scenario", action="append")
+    runner.add_argument("--split", action="append", choices=["dev", "holdout"])
     comparison = commands.add_parser("compare")
     comparison.add_argument("old", type=Path)
     comparison.add_argument("new", type=Path)
     comparison.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "run":
-        result = run_repeated(args.suite, args.agent, args.out, args.times, set(args.scenario) if args.scenario else None)
+        result = run_repeated(args.suite, args.agent, args.out, args.times,
+                              set(args.scenario) if args.scenario else None,
+                              set(args.split) if args.split else None)
         print(f"Single-run pass: {result['single_pass_rate']:.1%}; all-run pass: {result['all_attempts_pass_rate']:.1%}")
     else:
         compare(args.old, args.new, args.out)
