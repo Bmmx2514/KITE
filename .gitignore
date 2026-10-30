@@ -8,3 +8,4 @@ __pycache__/
 .venv/
 .lightrag/
 .external/
+examples/agents/dify.json

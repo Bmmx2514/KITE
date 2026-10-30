@@ -60,6 +60,8 @@ The single query trace is saved to `runs/trace.json`; a batch run writes `manife
 python -m scripts.export_dify_docs baseline --out .external/dify-docs/baseline
 ```
 
+For the Qwen test stack, install Dify's OpenAI-API-compatible model plugin. Add `qwen3.7-text-embedding-flash` as a custom text-embedding model with base URL `https://dashscope.aliyuncs.com/compatible-mode/v1`, and `qwen3.7-text-rerank` as a custom rerank model with rerank endpoint `https://dashscope.aliyuncs.com/compatible-api/v1/reranks`. Use a high-quality knowledge base and enable reranking. An Agent app can use Dify's DeepSeek provider with `deepseek-flash`; set `thinking` to `false` if reasoning text should not appear in the App API answer.
+
 Keep each fixture profile in a separate Dify knowledge base/app. Name uploaded documents exactly as exported (`travel-2026.txt`, etc.) so KITE can match Dify's retrieval resources to fixture IDs. For actual role isolation, create role-scoped knowledge bases/apps and route each scenario role to its own app API key; Dify's `user` identifier only separates conversations and is not an authorization control. The optional `role_input` field sends a trusted test role to a Dify app input variable, but the app must enforce it itself.
 
 To route a role to another Dify app, add a `role_profiles` entry next to `profiles` in the agent config, such as `"role_profiles": {"baseline": {"guest": {"url": "http://127.0.0.1/v1", "api_key_env": "KITE_DIFY_GUEST_KEY"}}}`. Other roles keep the profile's default app.
@@ -68,8 +70,8 @@ Copy `examples/agents/dify.example.json` to `examples/agents/dify.json`, set eac
 
 ```powershell
 python -m kite run --agent examples/agents/dify.json --profile baseline --out runs/dify-baseline
-python -m kite.quality runs/dify-baseline --out runs/dify-quality
-python -m kite.safety runs/dify-baseline --out runs/dify-safety
+.\.venv\Scripts\python.exe -m kite.quality runs/dify-baseline --out runs/dify-quality
+.\.venv\Scripts\python.exe -m kite.safety runs/dify-baseline --out runs/dify-safety
 ```
 
 The adapter supports Dify's streaming Agent API and blocking Chatflow API. It starts a fresh conversation per scenario, saves answer chunks, Dify events, usage metadata, and any `retriever_resources` returned by Dify. When retrieval metadata is absent, evidence and access checks are `unknown`; Dify internal tool calls are not controlled by KITE. The local workbench lists `dify.json` after it is created and can run the same repeated evaluation. API keys stay in environment variables or ignored `.env`, never in manifests.
