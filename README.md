@@ -52,6 +52,28 @@ python -m kite run --out runs/first-batch
 
 The single query trace is saved to `runs/trace.json`; a batch run writes `manifest.json` and one result per scenario. The manifest records source hashes, the LightRAG version, model IDs, and query settings without API keys. Each LightRAG reference retains its source path and retrieved chunks. KITE maps a reference to a document ID only when its filename matches a fixture ID; internal tool calls remain marked unobservable.
 
+## Test an external Dify Agent
+
+[Dify](https://github.com/langgenius/dify) is an independent open-source Agent platform. Install it with its [Docker Compose instructions](https://github.com/langgenius/dify/blob/main/docker/README.md), then create a Chatflow or Agent app with a knowledge base. For a local fixture corpus, export the documents and upload the resulting `.txt` files to that knowledge base:
+
+```powershell
+python -m scripts.export_dify_docs baseline --out .external/dify-docs/baseline
+```
+
+Keep each fixture profile in a separate Dify knowledge base/app. Name uploaded documents exactly as exported (`travel-2026.txt`, etc.) so KITE can match Dify's retrieval resources to fixture IDs. For actual role isolation, create role-scoped knowledge bases/apps and route each scenario role to its own app API key; Dify's `user` identifier only separates conversations and is not an authorization control. The optional `role_input` field sends a trusted test role to a Dify app input variable, but the app must enforce it itself.
+
+To route a role to another Dify app, add a `role_profiles` entry next to `profiles` in the agent config, such as `"role_profiles": {"baseline": {"guest": {"url": "http://127.0.0.1/v1", "api_key_env": "KITE_DIFY_GUEST_KEY"}}}`. Other roles keep the profile's default app.
+
+Copy `examples/agents/dify.example.json` to `examples/agents/dify.json`, set each profile URL and App API key environment variable in local `.env` (for example `KITE_DIFY_BASELINE_KEY=...`), and run:
+
+```powershell
+python -m kite run --agent examples/agents/dify.json --profile baseline --out runs/dify-baseline
+python -m kite.quality runs/dify-baseline --out runs/dify-quality
+python -m kite.safety runs/dify-baseline --out runs/dify-safety
+```
+
+The adapter supports Dify's streaming Agent API and blocking Chatflow API. It starts a fresh conversation per scenario, saves answer chunks, Dify events, usage metadata, and any `retriever_resources` returned by Dify. When retrieval metadata is absent, evidence and access checks are `unknown`; Dify internal tool calls are not controlled by KITE. The local workbench lists `dify.json` after it is created and can run the same repeated evaluation. API keys stay in environment variables or ignored `.env`, never in manifests.
+
 ## Score answer quality
 
 Install OpenJudge in the same environment, then score a saved run:

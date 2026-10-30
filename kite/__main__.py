@@ -4,9 +4,10 @@ import argparse
 from hashlib import sha256
 import json
 from pathlib import Path
+import re
 from urllib.parse import urlsplit
 
-from kite import lightrag
+from kite import dify, lightrag
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,19 +28,27 @@ def write_json(path, data):
 
 def agent_config(path):
     config = json.loads(path.read_text(encoding="utf-8"))
-    if config.get("type") != "lightrag" or not isinstance(config.get("profiles"), dict):
-        raise ValueError("agent config must define LightRAG profile URLs")
+    if config.get("type") not in {"lightrag", "dify"} or not isinstance(config.get("profiles"), dict) or not config["profiles"]:
+        raise ValueError("agent config must define lightrag or dify profiles")
     urls = list(config["profiles"].items())
     for profile, roles in config.get("role_profiles", {}).items():
         if profile not in config["profiles"] or not isinstance(roles, dict):
             raise ValueError("role_profiles must map configured profiles to roles")
         urls.extend((f"{profile}:{role}", url) for role, url in roles.items())
-    for profile, url in urls:
-        if not isinstance(profile, str) or not isinstance(url, str):
-            raise ValueError("LightRAG profile names and URLs must be strings")
+    for profile, settings in urls:
+        if not isinstance(profile, str):
+            raise ValueError("profile name must be a string")
+        if config["type"] == "dify":
+            if not isinstance(settings, dict) or not isinstance(settings.get("api_key_env"), str) or not re.fullmatch(r"KITE_DIFY_[A-Z0-9_]+", settings["api_key_env"]) or settings.get("response_mode", "streaming") not in {"streaming", "blocking"} or (settings.get("role_input") is not None and (not isinstance(settings["role_input"], str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", settings["role_input"]))):
+                raise ValueError(f"invalid Dify settings for profile {profile}")
+            url = settings.get("url")
+        else:
+            url = settings
+        if not isinstance(url, str):
+            raise ValueError(f"invalid URL for profile {profile}")
         parts = urlsplit(url)
-        if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment:
-            raise ValueError(f"invalid LightRAG URL for profile {profile}")
+        if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment or (config["type"] == "dify" and parts.path not in {"", "/", "/v1", "/v1/"}):
+            raise ValueError(f"invalid URL for profile {profile}")
     return config
 
 
@@ -58,6 +67,7 @@ def server_info(url):
 
 def run(suite, agent, out, selected_profiles=None, selected_ids=None):
     config = agent_config(agent)
+    adapter = lightrag if config["type"] == "lightrag" else dify
     if selected_profiles and not selected_profiles <= config["profiles"].keys():
         raise ValueError("selected profile is missing from agent config")
     suite_bytes = suite.read_bytes()
@@ -67,22 +77,23 @@ def run(suite, agent, out, selected_profiles=None, selected_ids=None):
     manifest = {
         "started_at": lightrag.now(),
         "finished_at": None,
-        "runner_sha256": sha256(Path(__file__).read_bytes() + (ROOT / "kite/lightrag.py").read_bytes()).hexdigest(),
+        "runner_sha256": sha256(Path(__file__).read_bytes() + Path(adapter.__file__).read_bytes()).hexdigest(),
         "suite": {"path": str(suite), "sha256": sha256(suite_bytes).hexdigest()},
         "knowledge": {
             name: digest(ROOT / "examples/knowledge" / name)
             for name in ("documents.jsonl", "profiles.json")
         },
         "agent": config,
-        "servers": {profile: server_info(url) for profile, url in config["profiles"].items()
+        "servers": {profile: server_info(url) if config["type"] == "lightrag" else {"adapter": "Dify", "response_mode": url.get("response_mode", "streaming")}
+                    for profile, url in config["profiles"].items()
                     if selected_profiles is None or profile in selected_profiles},
-        "query_options": lightrag.QUERY_OPTIONS,
+        "query_options": lightrag.QUERY_OPTIONS if config["type"] == "lightrag" else {"conversation": "fresh per scenario"},
         "scorer_version": None,
         "selected_profiles": sorted(selected_profiles) if selected_profiles else None,
         "selected_ids": sorted(selected_ids) if selected_ids else None,
         "counts": {"ok": 0, "error": 0},
     }
-    manifest["role_servers"] = {f"{profile}:{role}": server_info(url)
+    manifest["role_servers"] = {f"{profile}:{role}": server_info(url) if config["type"] == "lightrag" else {"adapter": "Dify", "response_mode": url.get("response_mode", "streaming")}
                                 for profile, roles in config.get("role_profiles", {}).items()
                                 for role, url in roles.items()
                                 if selected_profiles is None or profile in selected_profiles}
@@ -100,7 +111,7 @@ def run(suite, agent, out, selected_profiles=None, selected_ids=None):
             if selected_profiles and profile not in selected_profiles:
                 continue
             url = config.get("role_profiles", {}).get(profile, {}).get(scenario["role"], config["profiles"][profile])
-            trace = lightrag.query_trace(scenario["query"], scenario["role"], profile, url)
+            trace = adapter.query_trace(scenario["query"], scenario["role"], profile, url)
             result = {"status": "ok", "scenario": scenario, "trace": trace}
         except Exception as error:
             result = {

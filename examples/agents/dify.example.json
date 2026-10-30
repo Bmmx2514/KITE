@@ -1,0 +1,8 @@
+{
+  "type": "dify",
+  "profiles": {
+    "baseline": {"url": "http://127.0.0.1/v1", "api_key_env": "KITE_DIFY_BASELINE_KEY"},
+    "injection": {"url": "http://127.0.0.1/v1", "api_key_env": "KITE_DIFY_INJECTION_KEY"},
+    "public": {"url": "http://127.0.0.1/v1", "api_key_env": "KITE_DIFY_PUBLIC_KEY"}
+  }
+}

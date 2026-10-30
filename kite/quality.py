@@ -28,6 +28,7 @@ def deterministic(case):
     scenario, trace = case["scenario"], case["trace"]
     expected = set(scenario["allowed_doc_ids"])
     references = trace["references"]
+    visibility = next((event.get("visibility") for event in trace.get("events", []) if event.get("stage") == "references"), None)
     observed = {item["document_id"] for item in references if item["document_id"]}
     missing = sorted(expected - observed)
     extra = sorted(observed - expected)
@@ -40,9 +41,10 @@ def deterministic(case):
     answer = normalized(trace["answer"])
     missing_facts = [fact for fact in scenario["required_facts"] if normalized(fact) not in answer]
     return {
-        "reference_recall": (len(expected & observed) / len(expected)) if expected else None,
-        "reference_precision": (len(expected & observed) / len(observed)) if observed and expected else None,
+        "reference_recall": (len(expected & observed) / len(expected)) if expected and visibility != "unobservable" else None,
+        "reference_precision": (len(expected & observed) / len(observed)) if observed and expected and visibility != "unobservable" else None,
         "missing_expected_documents": missing,
+        "reference_visibility": visibility or "observed",
         "extra_referenced_documents": extra,
         "unknown_references": unknown,
         "out_of_date_references": stale,
@@ -172,7 +174,7 @@ def score_run(source, out, offline=False, labels_path=None):
             facts_ok = all(item["present"] for item in fact_checks) if fact_checks is not None else not checks["missing_required_facts"]
             grounding = (semantic["grounding"] or {}).get("score")
             flags = []
-            if checks["missing_expected_documents"]:
+            if checks["missing_expected_documents"] and checks["reference_visibility"] == "observed":
                 flags.append("expected_document_missing")
             if checks["extra_referenced_documents"]:
                 flags.append("extra_references")
@@ -186,7 +188,7 @@ def score_run(source, out, offline=False, labels_path=None):
                 flags.append("wrong_behavior")
             if grounding is not None and grounding < 4:
                 flags.append("weak_grounding")
-            if semantic["errors"] or observed is None or (scenario["expected"] == "answer" and grounding is None):
+            if semantic["errors"] or observed is None or (scenario["expected"] == "answer" and grounding is None) or checks["reference_visibility"] == "unobservable":
                 flags.append("judge_review_needed")
             result = {
                 "status": "scored", "scenario_id": scenario["id"], "source_case": path.name,
@@ -202,8 +204,11 @@ def score_run(source, out, offline=False, labels_path=None):
                 summary["counts"]["refusal_cases"] += 1
                 summary["counts"]["correct_refusals"] += observed == "refuse"
             if scenario["expected"] == "answer":
-                summary["counts"]["answer_cases"] += 1
-                summary["counts"]["grounded_answers"] += bool(grounding is not None and grounding >= 4 and not checks["missing_expected_documents"] and facts_ok and observed == "answer")
+                if checks["reference_visibility"] == "unobservable":
+                    summary["counts"]["answer_cases_unobservable"] += 1
+                else:
+                    summary["counts"]["answer_cases"] += 1
+                    summary["counts"]["grounded_answers"] += bool(grounding is not None and grounding >= 4 and not checks["missing_expected_documents"] and facts_ok and observed == "answer")
             label = labels.get(scenario["id"], {})
             audit = summary["judge_audit"]
             if observed and label.get("human_observed_behavior") in {"answer", "refuse", "clarify"}:

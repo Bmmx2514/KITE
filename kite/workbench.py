@@ -117,7 +117,7 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/me":
                 result = {"operator": self.operator}
             elif parsed.path == "/api/agents":
-                result = [path.name for path in sorted(AGENTS.glob("*.json"))]
+                result = [path.name for path in sorted(AGENTS.glob("*.json")) if not path.name.endswith(".example.json")]
             elif parsed.path == "/api/bundles":
                 result = []
                 for path in sorted(RUNS.iterdir(), key=lambda item: item.stat().st_mtime, reverse=True):
@@ -167,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
             data = self.body()
             if self.path == "/api/run":
                 agent_name = data.get("agent")
-                if agent_name not in {path.name for path in AGENTS.glob("*.json")}:
+                if agent_name not in {path.name for path in AGENTS.glob("*.json") if not path.name.endswith(".example.json")}:
                     raise ValueError("unknown agent config")
                 split = data.get("split")
                 if split not in {None, "dev", "holdout"}:
