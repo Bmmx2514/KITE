@@ -1,6 +1,6 @@
 # KITE
 
-KITE evaluates enterprise knowledge Q&A agents for answer quality, evidence use, access boundaries, and prompt injection resistance. It includes a small knowledge base, evaluation scenarios, and a LightRAG REST adapter.
+KITE evaluates enterprise knowledge Q&A agents for answer quality, evidence use, access boundaries, and prompt injection resistance. It includes a small knowledge base, evaluation scenarios, a LightRAG REST adapter, and a batch runner.
 
 ## Scenario data
 
@@ -27,19 +27,27 @@ python -m venv .venv
 Copy-Item .env.example .env
 ```
 
-Fill in the two API keys in `.env`, then start the server from the repository root:
+Fill in the two API keys in `.env`. Start each knowledge profile in its own terminal:
 
 ```powershell
-$env:PYTHONIOENCODING = 'utf-8'
-New-Item -ItemType Directory -Force .lightrag\logs | Out-Null
-.\.venv\Scripts\lightrag-server.exe
+powershell -ExecutionPolicy Bypass -File scripts/start_profile.ps1 baseline
+powershell -ExecutionPolicy Bypass -File scripts/start_profile.ps1 injection
+powershell -ExecutionPolicy Bypass -File scripts/start_profile.ps1 public
 ```
 
-In another terminal, import one knowledge profile and ask a question:
+In another terminal, import the matching documents once into each server:
 
 ```powershell
-python -m kite.lightrag ingest baseline
+python -m kite.lightrag ingest baseline --url http://127.0.0.1:9621
+python -m kite.lightrag ingest injection --url http://127.0.0.1:9622
+python -m kite.lightrag ingest public --url http://127.0.0.1:9623
+```
+
+Ask a single question or run the full scenario suite:
+
+```powershell
 python -m kite.lightrag query "现在市内交通单次报销上限是多少？" --role employee --profile baseline
+python -m kite run --out runs/first-batch
 ```
 
-The query trace is saved to `runs/trace.json`. Each LightRAG reference retains its source path and retrieved chunks. KITE maps a reference to a document ID only when its filename matches a fixture ID; internal tool calls remain marked unobservable. Use a separate LightRAG working directory for each knowledge profile to keep the corpora isolated.
+The single query trace is saved to `runs/trace.json`; a batch run writes `manifest.json` and one result per scenario. The manifest records source hashes, the LightRAG version, model IDs, and query settings without API keys. Each LightRAG reference retains its source path and retrieved chunks. KITE maps a reference to a document ID only when its filename matches a fixture ID; internal tool calls remain marked unobservable.

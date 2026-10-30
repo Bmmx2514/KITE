@@ -13,18 +13,25 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_URL = os.getenv("KITE_LIGHTRAG_URL", "http://127.0.0.1:9621").rstrip("/")
+QUERY_OPTIONS = {
+    "mode": "mix",
+    "stream": False,
+    "include_references": True,
+    "include_chunk_content": True,
+    "enable_rerank": True,
+}
 
 
 def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def api(method, path, body=None):
+def api(method, path, body=None, base_url=None):
     headers = {"Content-Type": "application/json"}
     if key := os.getenv("KITE_LIGHTRAG_API_KEY"):
         headers["X-API-Key"] = key
     payload = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
-    request = Request(BASE_URL + path, data=payload, headers=headers, method=method)
+    request = Request((base_url or BASE_URL).rstrip("/") + path, data=payload, headers=headers, method=method)
     try:
         with urlopen(request, timeout=120) as response:
             return json.load(response)
@@ -40,17 +47,17 @@ def fixtures():
     return docs, profiles
 
 
-def ingest(profile):
+def ingest(profile, base_url=None):
     docs, profiles = fixtures()
     for doc_id in profiles[profile]:
         doc = docs[doc_id]
         content = f"Title: {doc['title']}\nVersion: {doc['version']}\nValid from: {doc['valid_from']}\nValid to: {doc['valid_to'] or 'current'}\n\n{doc['content']}"
-        result = api("POST", "/documents/text", {"text": content, "file_source": f"{doc_id}.txt"})
+        result = api("POST", "/documents/text", {"text": content, "file_source": f"{doc_id}.txt"}, base_url)
         track_id = result["track_id"]
         print(f"Queued {doc_id}: {track_id}", flush=True)
         deadline = time.monotonic() + 600
         while time.monotonic() < deadline:
-            status = api("GET", f"/documents/track_status/{quote(track_id)}")
+            status = api("GET", f"/documents/track_status/{quote(track_id)}", base_url=base_url)
             records = status["documents"]
             if records and all(item["status"].upper() == "PROCESSED" for item in records):
                 print(f"Processed {doc_id}", flush=True)
@@ -96,21 +103,19 @@ def trace(query, role, profile, raw, sent_at, request):
             {"stage": "internal_tool_calls", "visibility": "unobservable"},
         ],
         "server_response_time": raw.get("response_time"),
+        "raw_response": raw,
     }
 
 
-def ask(query, role, profile, output):
+def query_trace(query, role, profile, base_url=None):
     sent_at = now()
-    request = {
-        "query": query,
-        "mode": "mix",
-        "stream": False,
-        "include_references": True,
-        "include_chunk_content": True,
-        "enable_rerank": True,
-    }
-    raw = api("POST", "/query", request)
-    result = trace(query, role, profile, raw, sent_at, request)
+    request = {"query": query, **QUERY_OPTIONS}
+    raw = api("POST", "/query", request, base_url)
+    return trace(query, role, profile, raw, sent_at, request)
+
+
+def ask(query, role, profile, output, base_url=None):
+    result = query_trace(query, role, profile, base_url)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Saved {output}")
@@ -121,16 +126,18 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     importer = commands.add_parser("ingest")
     importer.add_argument("profile", choices=fixtures()[1])
+    importer.add_argument("--url", default=BASE_URL)
     asker = commands.add_parser("query")
     asker.add_argument("query")
     asker.add_argument("--role", required=True)
     asker.add_argument("--profile", required=True, choices=fixtures()[1])
     asker.add_argument("--out", type=Path, default=ROOT / "runs/trace.json")
+    asker.add_argument("--url", default=BASE_URL)
     args = parser.parse_args()
     if args.command == "ingest":
-        ingest(args.profile)
+        ingest(args.profile, args.url)
     else:
-        ask(args.query, args.role, args.profile, args.out)
+        ask(args.query, args.role, args.profile, args.out, args.url)
 
 
 if __name__ == "__main__":
