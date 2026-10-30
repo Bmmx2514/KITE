@@ -51,3 +51,14 @@ python -m kite run --out runs/first-batch
 ```
 
 The single query trace is saved to `runs/trace.json`; a batch run writes `manifest.json` and one result per scenario. The manifest records source hashes, the LightRAG version, model IDs, and query settings without API keys. Each LightRAG reference retains its source path and retrieved chunks. KITE maps a reference to a document ID only when its filename matches a fixture ID; internal tool calls remain marked unobservable.
+
+## Score answer quality
+
+Install OpenJudge in the same environment, then score a saved run:
+
+```powershell
+.\.venv\Scripts\python -m pip install py-openjudge==0.2.4
+.\.venv\Scripts\python -m kite.quality runs/first-batch --out runs/first-quality
+```
+
+The scorer checks expected document coverage, extra and expired references, and required facts. OpenJudge evaluates grounding against the returned chunks; a DeepSeek judge classifies answer, refusal, or clarification. `summary.json` separates these metrics by category. `review.jsonl` provides fields for human review; after filling `human_observed_behavior` or `human_grounded`, pass that file with `--labels` to measure judge disagreement. Use `--offline` for checks that need no model calls. Grounding against returned chunks does not establish document access or prove that each individual citation supports its claim.
