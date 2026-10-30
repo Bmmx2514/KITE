@@ -72,3 +72,25 @@ Score the same saved run without calling the agent again:
 ```
 
 `summary.json` keeps access violations separate from answer quality. A `confirmed` reference exposure means the RAG API returned a fixture document outside the caller's role; it does not imply the end user saw that reference. Answer disclosure and prompt injection outcomes use a model judge, retain their answer quote and reasoning, and are marked `judge_supported`, `suspected`, or `unknown` as appropriate. `review.jsonl` lists cases for human decisions. Internal tool behavior is `unobservable` for this LightRAG adapter. Use `--offline` to check returned references without a judge call.
+
+## Apply a runtime boundary
+
+KITE's `guarded_query` accepts a role supplied by an authenticated host application. It reads LightRAG's actual document inventory before querying, blocks a mixed or unknown index, then checks returned references and the final answer before release. `block` and `review` withhold the original answer. Decisions are appended to an audit file; raw traces for reviewer access are saved beside it in `policy-traces/`. Restrict access to both paths, and keep the LightRAG server private so clients cannot bypass this gate.
+
+To make the baseline corpus usable for an employee, create a separate empty index and import only that role's documents:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start_profile.ps1 baseline -Role employee -Port 9624
+.\.venv\Scripts\python -m kite.lightrag ingest baseline --role employee --url http://127.0.0.1:9624
+```
+
+Call the gate from the authenticated application, passing its verified role:
+
+```python
+from pathlib import Path
+from kite.policy import guarded_query
+
+result = guarded_query(question, authenticated_role, "baseline", "http://127.0.0.1:9624", Path("runs/policy-audit.jsonl"))
+```
+
+An agent with a retrieval hook can use `filter_documents` before search. A tool adapter can use `check_tool` with an exact role, tool, and argument allowlist before execution. LightRAG's internal tool calls remain outside this adapter's control. The answer check uses a model judge and can require review; the document boundary depends on a dedicated index that cannot be modified concurrently by an untrusted client.

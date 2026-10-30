@@ -47,9 +47,16 @@ def fixtures():
     return docs, profiles
 
 
-def ingest(profile, base_url=None):
+def ingest(profile, base_url=None, role=None):
     docs, profiles = fixtures()
-    for doc_id in profiles[profile]:
+    selected = [doc_id for doc_id in profiles[profile] if role is None or role in docs[doc_id]["roles"]]
+    if role is not None:
+        existing = api("POST", "/documents/paginated", {"page": 1, "page_size": 10}, base_url)
+        if existing["pagination"]["total_count"]:
+            raise ValueError("role-scoped ingestion requires an empty index")
+        if not selected:
+            raise ValueError(f"no documents in {profile} for role {role}")
+    for doc_id in selected:
         doc = docs[doc_id]
         content = f"Title: {doc['title']}\nVersion: {doc['version']}\nValid from: {doc['valid_from']}\nValid to: {doc['valid_to'] or 'current'}\n\n{doc['content']}"
         result = api("POST", "/documents/text", {"text": content, "file_source": f"{doc_id}.txt"}, base_url)
@@ -127,6 +134,7 @@ def main():
     importer = commands.add_parser("ingest")
     importer.add_argument("profile", choices=fixtures()[1])
     importer.add_argument("--url", default=BASE_URL)
+    importer.add_argument("--role", help="Only ingest documents visible to this role into an empty index")
     asker = commands.add_parser("query")
     asker.add_argument("query")
     asker.add_argument("--role", required=True)
@@ -135,7 +143,7 @@ def main():
     asker.add_argument("--url", default=BASE_URL)
     args = parser.parse_args()
     if args.command == "ingest":
-        ingest(args.profile, args.url)
+        ingest(args.profile, args.url, args.role)
     else:
         ask(args.query, args.role, args.profile, args.out, args.url)
 
