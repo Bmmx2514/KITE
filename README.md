@@ -94,3 +94,14 @@ result = guarded_query(question, authenticated_role, "baseline", "http://127.0.0
 ```
 
 An agent with a retrieval hook can use `filter_documents` before search. A tool adapter can use `check_tool` with an exact role, tool, and argument allowlist before execution. LightRAG's internal tool calls remain outside this adapter's control. The answer check uses a model judge and can require review; the document boundary depends on a dedicated index that cannot be modified concurrently by an untrusted client.
+
+## Repeat and compare evaluations
+
+Run selected high-value scenarios three times. Attack scenarios automatically include their clean control:
+
+```powershell
+.\.venv\Scripts\python -m kite.repeat run --out runs/repeat-a --scenario directory-injection --scenario public-feedback-timing
+.\.venv\Scripts\python -m kite.repeat compare runs/repeat-a runs/repeat-b --out runs/comparison.md
+```
+
+Each attempt has its own Agent trace, quality score, and safety score. `summary.json` reports single-run and all-run pass rates, category counts, observed server time, and versions. A pass requires both quality and safety checks; uncertain judge outcomes stay `unknown`. The comparison report lists added and resolved failures, safety changes, and representative traces. It marks scorer or scenario changes and Agent/API errors as requiring review. Token cost is unobservable with this adapter.

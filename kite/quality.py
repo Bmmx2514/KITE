@@ -4,6 +4,7 @@ import argparse
 import asyncio
 from collections import Counter, defaultdict
 from datetime import date
+from hashlib import sha256
 from importlib.metadata import version
 import json
 import os
@@ -137,6 +138,7 @@ def score_run(source, out, offline=False, labels_path=None):
         "source_run": str(source),
         "source_suite_sha256": source_manifest["suite"]["sha256"],
         "grader_version": GRADER_VERSION,
+        "scorer_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
         "openjudge_version": version("py-openjudge") if not offline else None,
         "judge_model": model_name,
         "judge_base_url": judge_url,

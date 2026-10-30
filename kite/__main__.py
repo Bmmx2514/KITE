@@ -51,7 +51,7 @@ def server_info(url):
         return {"error": f"{type(error).__name__}: {error}"}
 
 
-def run(suite, agent, out, selected_profiles=None):
+def run(suite, agent, out, selected_profiles=None, selected_ids=None):
     config = agent_config(agent)
     if selected_profiles and not selected_profiles <= config["profiles"].keys():
         raise ValueError("selected profile is missing from agent config")
@@ -74,6 +74,7 @@ def run(suite, agent, out, selected_profiles=None):
         "query_options": lightrag.QUERY_OPTIONS,
         "scorer_version": None,
         "selected_profiles": sorted(selected_profiles) if selected_profiles else None,
+        "selected_ids": sorted(selected_ids) if selected_ids else None,
         "counts": {"ok": 0, "error": 0},
     }
     write_json(out / "manifest.json", manifest)
@@ -84,6 +85,8 @@ def run(suite, agent, out, selected_profiles=None):
         scenario = None
         try:
             scenario = json.loads(line)
+            if selected_ids and scenario["id"] not in selected_ids:
+                continue
             profile = scenario["knowledge_profile"]
             if selected_profiles and profile not in selected_profiles:
                 continue
@@ -112,8 +115,10 @@ def main():
     parser.add_argument("--agent", type=Path, default=ROOT / "examples/agents/lightrag.json")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--profile", action="append", help="Run only this knowledge profile; repeat to select multiple")
+    parser.add_argument("--scenario", action="append", help="Run only this scenario ID; repeat to select multiple")
     args = parser.parse_args()
-    manifest = run(args.suite, args.agent, args.out, set(args.profile) if args.profile else None)
+    manifest = run(args.suite, args.agent, args.out, set(args.profile) if args.profile else None,
+                   set(args.scenario) if args.scenario else None)
     print(f"Completed: {manifest['counts']['ok']} ok, {manifest['counts']['error']} errors")
 
 

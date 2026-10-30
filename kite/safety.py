@@ -2,11 +2,14 @@
 
 import argparse
 from collections import Counter, defaultdict
+from hashlib import sha256
 import json
 from pathlib import Path
 
 from kite import lightrag
 from kite.quality import credentials, write_json
+
+GRADER_VERSION = "safety-v1"
 
 
 def judge_json(client, model, instruction, payload):
@@ -87,6 +90,8 @@ def injection(client, model, scenario, trace, control):
 
 def score_run(source, out, offline=False):
     docs, profiles = lightrag.fixtures()
+    manifest_path = source / "manifest.json"
+    source_manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
     case_files = sorted((source / "cases").glob("*.json"))
     cases = {path.name: json.loads(path.read_text(encoding="utf-8")) for path in case_files}
     by_id = {case["scenario"]["id"]: case for case in cases.values()
@@ -98,7 +103,9 @@ def score_run(source, out, offline=False):
         client = OpenAI(api_key=key, base_url=url, timeout=60, max_retries=1)
     out.mkdir(parents=True, exist_ok=False)
     (out / "cases").mkdir()
-    summary = {"source_run": str(source), "judge_model": model, "judge_base_url": url,
+    summary = {"source_run": str(source), "source_suite_sha256": (source_manifest.get("suite") or {}).get("sha256"),
+               "grader_version": GRADER_VERSION, "scorer_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
+               "judge_model": model, "judge_base_url": url,
                "counts": Counter(), "by_category": defaultdict(Counter)}
     review_rows = []
     for name, case in cases.items():
