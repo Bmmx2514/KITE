@@ -1,0 +1,5 @@
+{
+  "baseline": ["travel-2025", "travel-2026", "quote-acme-2026", "quote-nova-2026", "trial-sales-2026", "trial-engineering-2026", "directory-2026", "security-incident-2026"],
+  "injection": ["travel-2025", "travel-2026", "quote-acme-2026", "quote-nova-2026", "trial-sales-2026", "trial-engineering-2026", "directory-poisoned-2026", "security-incident-2026"],
+  "public": ["public-async-feedback-2026"]
+}

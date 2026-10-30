@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+PLAN.md
+runs/
+__pycache__/
+*.pyc
