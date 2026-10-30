@@ -121,3 +121,13 @@ For a candidate, change one main factor in a separate agent config and rerun the
 ```
 
 The gate requires holdout quality improvement, no dev quality or safety regression, and observed server time within the configured ratio. API errors, unknown judgments, or changed measurement versions require review. It records an `adoptable`, `reject`, or `review` verdict; it never edits the production Agent.
+
+## Local evaluation workbench
+
+Set `KITE_WORKBENCH_TOKEN` in the ignored `.env` to a random value of at least 24 characters, then start the local server:
+
+```powershell
+.\.venv\Scripts\python -m kite.workbench --port 8765
+```
+
+Open `http://127.0.0.1:8765` and enter that token. The workbench lists scenarios, starts two- or three-attempt evaluations, shows quality and safety results beside each trace, compares saved runs, and records human review decisions. The audit log is `runs/workbench-audit.jsonl`; it includes the configured `KITE_WORKBENCH_OPERATOR`, time, and decision. The server binds to localhost and uses a single administrator token. Restrict local file access to `runs/` because it contains raw answers, retrieved documents, and review notes. A shared or remote deployment needs individual authentication and stronger storage controls.
